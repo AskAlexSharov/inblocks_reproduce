@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
 	"log"
 	mathRand "math/rand"
 	"os"
@@ -17,7 +16,7 @@ import (
 
 const (
 	keysPerBatch    = 100_000
-	maxValuesPerKey = 1_000
+	maxValuesPerKey = 10_000
 )
 
 func main() {
@@ -53,7 +52,7 @@ func testMdbx() {
 	if err = env.SetOption(mdbx.OptMaxReaders, 100); err != nil {
 		panic(err)
 	}
-	if err = env.SetGeometry(-1, -1, int(1*datasize.TB), int(2*datasize.GB), -1, 4*1024); err != nil {
+	if err = env.SetGeometry(-1, -1, int(1*datasize.TB), int(512*datasize.MB), -1, 4*1024); err != nil {
 		panic(err)
 	}
 	if err = env.SetOption(mdbx.OptRpAugmentLimit, 32*1024*1024); err != nil {
@@ -92,17 +91,15 @@ func testMdbx() {
 	}
 
 	log.Printf("=== insert started")
-	for i := 0; i < 10; i++ {
-		log.Printf("=== insert progress: %d0%%", i)
-		insertBatch(env, dbi, createBatch())
+	for i := 0; i < 100; i++ {
+		fileInfo, err := os.Stat("./data_mdbx/mdbx.dat")
+		if err != nil {
+			panic(err)
+		}
+		log.Printf("=== insert progress: %d%%, fileSize: %dGb", i, fileInfo.Size()/1024/1024/1024)
+		insertBatch(env, dbi, createBatch(uint8(i)))
 	}
-	fileInfo, err := os.Stat("./data_mdbx/mdbx.dat")
-	if err != nil {
-		panic(err)
-	}
-	log.Printf("=== insert done, file size: %dGb, reading started", fileInfo.Size()/1024/1024/1024)
 	for i := 0; i < 10; i++ {
-		log.Printf("=== read progress: %d0%%", i)
 		if err = env.View(func(txn *mdbx.Txn) error {
 			defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
 			txn.RawRead = true
@@ -133,22 +130,24 @@ func testMdbx() {
 	}
 }
 
-func createBatch() []*Pair {
+func createBatch(batchId uint8) []*Pair {
 	val := make([]byte, 44)
+	key := make([]byte, 20)
+	key[0] = batchId
 	var pairs []*Pair
 	for j := 0; j < keysPerBatch; j++ {
-		key := make([]byte, 20)
-		_, err := rand.Read(key)
-		if err != nil {
-			panic(err)
-		}
+		//_, err := rand.Read(key)
+		//if err != nil {
+		//	panic(err)
+		//}
+		key = next(key)
 		for h := 0; h < mathRand.Intn(maxValuesPerKey); h++ {
 			val = next(val)
-			pairs = append(pairs, &Pair{k: key, v: copyBytes(val)})
+			pairs = append(pairs, &Pair{k: copyBytes(key), v: copyBytes(val)})
 		}
 
 	}
-	sortPairs(pairs)
+	//sortPairs(pairs)
 
 	return pairs
 }
@@ -163,23 +162,25 @@ func insertBatch(env *mdbx.Env, dbi mdbx.DBI, pairs []*Pair) {
 
 		for _, pair := range pairs {
 			k, v := pair.k, pair.v
-			_, _, err := c.Get(k, v, mdbx.GetBoth)
-			if err != nil {
-				if mdbx.IsNotFound(err) {
-					err = c.Put(k, v, mdbx.Upsert)
-					if err != nil {
-						panic(err)
-					}
-					continue
-				}
-				panic(err)
-			}
-			err = c.Del(mdbx.Current)
-			if err != nil {
-				panic(err)
-			}
+			err = c.Put(k, v, mdbx.AppendDup)
 
-			err = c.Put(k, v, mdbx.Upsert)
+			//_, _, err := c.Get(k, v, mdbx.GetBoth)
+			//if err != nil {
+			//	if mdbx.IsNotFound(err) {
+			//		err = c.Put(k, v, mdbx.Upsert)
+			//		if err != nil {
+			//			panic(err)
+			//		}
+			//		continue
+			//	}
+			//	panic(err)
+			//}
+			//err = c.Del(mdbx.Current)
+			//if err != nil {
+			//	panic(err)
+			//}
+			//
+			//err = c.Put(k, v, mdbx.Upsert)
 			if err != nil {
 				panic(err)
 			}
@@ -226,17 +227,15 @@ func lmdbTest() {
 	}
 
 	log.Printf("=== insert started")
-	for i := 0; i < 10; i++ {
-		log.Printf("=== insert progress: %d0%%", i)
-		insertBatchLmdb(env, dbi, createBatch())
+	for i := 0; i < 100; i++ {
+		fileInfo, err := os.Stat("./data_lmdb/data.db")
+		if err != nil {
+			panic(err)
+		}
+		log.Printf("=== insert progress: %d%%, fileSize: %dGb", i, fileInfo.Size()/1024/1024/1024)
+		insertBatchLmdb(env, dbi, createBatch(uint8(i)))
 	}
-	fileInfo, err := os.Stat("./data_lmdb/data.db")
-	if err != nil {
-		panic(err)
-	}
-	log.Printf("=== insert done, file size: %dGb, reading started", fileInfo.Size()/1024/1024/1024)
 	for i := 0; i < 10; i++ {
-		log.Printf("=== reading progress: %d0%%", i)
 		if err = env.View(func(txn *lmdb.Txn) error {
 			defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
 			txn.RawRead = true
@@ -330,7 +329,7 @@ func getRUsage() (inBlock, outBlocks, nvcsw, nivcsw int64) {
 	return ru.Inblock, ru.Oublock, ru.Nvcsw, ru.Nivcsw
 }
 
-// NextSubtree does []byte++. Returns false if overflow.
+// next does []byte++
 func next(in []byte) []byte {
 	r := make([]byte, len(in))
 	copy(r, in)
