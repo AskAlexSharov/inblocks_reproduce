@@ -23,7 +23,7 @@ func main() {
 	go func() {
 		for {
 			in, out, _, _ := getRUsage()
-			log.Printf("rusage inblocks=%d, outblocks=%d", in, out)
+			log.Printf("rusage inblocks=%dK, outblocks=%dK", in/1000, out/1000)
 			time.Sleep(5 * time.Second)
 		}
 	}()
@@ -139,7 +139,8 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 		if err != nil {
 			return err
 		}
-		for k, _, err := c.Get(nil, nil, mdbx.First); ; k, _, err = c.Get(nil, nil, mdbx.Next) {
+		defer c.Close()
+		for k, _, err := c.Get(nil, nil, mdbx.First); ; k, _, err = c.Get(nil, nil, mdbx.NextNoDup) {
 			if err != nil {
 				if mdbx.IsNotFound(err) {
 					break
@@ -156,6 +157,37 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 			}
 		}
 		return nil
+	}); err != nil {
+		panic(err)
+	}
+}
+
+func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
+	if err := env.View(func(txn *lmdb.Txn) error {
+		defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
+		txn.RawRead = true
+		c, err := txn.OpenCursor(dbi)
+		if err != nil {
+			return err
+		}
+		defer c.Close()
+		for k, _, err := c.Get(nil, nil, lmdb.First); ; k, _, err = c.Get(nil, nil, lmdb.Next) {
+			if err != nil {
+				if lmdb.IsNotFound(err) {
+					break
+				}
+				return err
+			}
+			for _, _, err = c.Get(k, nil, lmdb.FirstDup); ; _, _, err = c.Get(k, nil, lmdb.NextDup) {
+				if err != nil {
+					if lmdb.IsNotFound(err) {
+						break
+					}
+					return err
+				}
+			}
+		}
+		return err
 	}); err != nil {
 		panic(err)
 	}
@@ -221,38 +253,6 @@ func writeLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 		}
 		log.Printf("=== insert progress: %d%%, fileSize: %dGb", i, fileInfo.Size()/1024/1024/1024)
 		insertBatchLmdb(env, dbi, createBatch(uint8(i)))
-	}
-}
-
-func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
-	for i := 0; i < 10; i++ {
-		if err := env.View(func(txn *lmdb.Txn) error {
-			defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
-			txn.RawRead = true
-			c, err := txn.OpenCursor(dbi)
-			if err != nil {
-				return err
-			}
-			for k, _, err := c.Get(nil, nil, lmdb.First); ; k, _, err = c.Get(k, nil, lmdb.Next) {
-				if err != nil {
-					if lmdb.IsNotFound(err) {
-						break
-					}
-					return err
-				}
-				for _, _, err = c.Get(k, nil, lmdb.FirstDup); ; _, _, err = c.Get(k, nil, lmdb.NextDup) {
-					if err != nil {
-						if lmdb.IsNotFound(err) {
-							break
-						}
-						return err
-					}
-				}
-			}
-			return err
-		}); err != nil {
-			panic(err)
-		}
 	}
 }
 
