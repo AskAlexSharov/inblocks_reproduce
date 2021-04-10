@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	keysPerBatch    = 10000
-	maxValuesPerKey = 100
+	keysPerBatch    = 100_000
+	maxValuesPerKey = 1_000
 )
 
 func main() {
@@ -92,16 +92,17 @@ func testMdbx() {
 	}
 
 	log.Printf("=== insert started")
-	for i := 0; i < 100; i++ {
-		log.Printf("=== insert progress: %d%%", i)
-		insertBatch(env, dbi)
+	for i := 0; i < 10; i++ {
+		log.Printf("=== insert progress: %d0%%", i)
+		insertBatch(env, dbi, createBatch())
 	}
 	fileInfo, err := os.Stat("./data_mdbx/mdbx.dat")
 	if err != nil {
 		panic(err)
 	}
 	log.Printf("=== insert done, file size: %dGb, reading started", fileInfo.Size()/1024/1024/1024)
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10; i++ {
+		log.Printf("=== read progress: %d0%%", i)
 		if err = env.View(func(txn *mdbx.Txn) error {
 			defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
 			txn.RawRead = true
@@ -109,14 +110,14 @@ func testMdbx() {
 			if err != nil {
 				return err
 			}
-			for _, _, err = c.Get(nil, nil, mdbx.First); ; _, _, err = c.Get(nil, nil, mdbx.Next) {
+			for k, _, err := c.Get(nil, nil, mdbx.First); ; k, _, err = c.Get(nil, nil, mdbx.Next) {
 				if err != nil {
 					if mdbx.IsNotFound(err) {
 						break
 					}
 					return err
 				}
-				for _, _, err = c.Get(nil, nil, mdbx.FirstDup); ; _, _, err = c.Get(nil, nil, mdbx.NextDup) {
+				for _, _, err = c.Get(k, nil, mdbx.FirstDup); ; _, _, err = c.Get(k, nil, mdbx.NextDup) {
 					if err != nil {
 						if mdbx.IsNotFound(err) {
 							break
@@ -132,7 +133,8 @@ func testMdbx() {
 	}
 }
 
-func insertBatch(env *mdbx.Env, dbi mdbx.DBI) {
+func createBatch() []*Pair {
+	val := make([]byte, 44)
 	var pairs []*Pair
 	for j := 0; j < keysPerBatch; j++ {
 		key := make([]byte, 20)
@@ -141,12 +143,16 @@ func insertBatch(env *mdbx.Env, dbi mdbx.DBI) {
 			panic(err)
 		}
 		for h := 0; h < mathRand.Intn(maxValuesPerKey); h++ {
-			pairs = append(pairs, NewPair(key))
+			val = next(val)
+			pairs = append(pairs, &Pair{k: key, v: copyBytes(val)})
 		}
 
 	}
 	sortPairs(pairs)
 
+	return pairs
+}
+func insertBatch(env *mdbx.Env, dbi mdbx.DBI, pairs []*Pair) {
 	if err := env.Update(func(txn *mdbx.Txn) error {
 		txn.RawRead = true
 		c, err := txn.OpenCursor(dbi)
@@ -220,16 +226,17 @@ func lmdbTest() {
 	}
 
 	log.Printf("=== insert started")
-	for i := 0; i < 100; i++ {
-		log.Printf("=== insert progress: %d%%", i)
-		insertBatchLmdb(env, dbi)
+	for i := 0; i < 10; i++ {
+		log.Printf("=== insert progress: %d0%%", i)
+		insertBatchLmdb(env, dbi, createBatch())
 	}
 	fileInfo, err := os.Stat("./data_lmdb/data.db")
 	if err != nil {
 		panic(err)
 	}
 	log.Printf("=== insert done, file size: %dGb, reading started", fileInfo.Size()/1024/1024/1024)
-	for i := 0; i < 100_000; i++ {
+	for i := 0; i < 10; i++ {
+		log.Printf("=== reading progress: %d0%%", i)
 		if err = env.View(func(txn *lmdb.Txn) error {
 			defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
 			txn.RawRead = true
@@ -260,21 +267,7 @@ func lmdbTest() {
 	}
 }
 
-func insertBatchLmdb(env *lmdb.Env, dbi lmdb.DBI) {
-	var pairs []*Pair
-	for j := 0; j < keysPerBatch; j++ {
-		key := make([]byte, 20)
-		_, err := rand.Read(key)
-		if err != nil {
-			panic(err)
-		}
-		for h := 0; h < mathRand.Intn(maxValuesPerKey); h++ {
-			pairs = append(pairs, NewPair(key))
-		}
-
-	}
-	sortPairs(pairs)
-
+func insertBatchLmdb(env *lmdb.Env, dbi lmdb.DBI, pairs []*Pair) {
 	if err := env.Update(func(txn *lmdb.Txn) error {
 		txn.RawRead = true
 		c, err := txn.OpenCursor(dbi)
@@ -328,15 +321,6 @@ type Pair struct {
 	v []byte
 }
 
-func NewPair(k []byte) *Pair {
-	v := make([]byte, 44)
-	_, err := rand.Read(v)
-	if err != nil {
-		panic(err)
-	}
-	return &Pair{k: k, v: v}
-}
-
 func getRUsage() (inBlock, outBlocks, nvcsw, nivcsw int64) {
 	var ru syscall.Rusage
 	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
@@ -344,4 +328,29 @@ func getRUsage() (inBlock, outBlocks, nvcsw, nivcsw int64) {
 		return
 	}
 	return ru.Inblock, ru.Oublock, ru.Nvcsw, ru.Nivcsw
+}
+
+// NextSubtree does []byte++. Returns false if overflow.
+func next(in []byte) []byte {
+	r := make([]byte, len(in))
+	copy(r, in)
+	for i := len(r) - 1; i >= 0; i-- {
+		if r[i] != 255 {
+			r[i]++
+			return r
+		}
+
+		r[i] = 0
+	}
+	return r
+}
+
+func copyBytes(b []byte) (copiedBytes []byte) {
+	if b == nil {
+		return nil
+	}
+	copiedBytes = make([]byte, len(b))
+	copy(copiedBytes, b)
+
+	return
 }
