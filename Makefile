@@ -1,5 +1,5 @@
-test:
-	go run --trimpatch
+test: mdbx
+	go build .
 
 
 mdbx:

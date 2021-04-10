@@ -6,7 +6,7 @@ import (
 	mathRand "math/rand"
 	"sort"
 
-	"github.com/torquem-ch/mdbx-go/mdbx"
+	"github.com/AskAlexSharov/inblocks_reproduce/mdbx-go/mdbx"
 )
 
 func main() {
@@ -111,8 +111,4 @@ func NewPair(k []byte) *Pair {
 		panic(err)
 	}
 	return &Pair{k: k, v: v}
-}
-
-func (p *Pair) Less(than *Pair) {
-
 }
