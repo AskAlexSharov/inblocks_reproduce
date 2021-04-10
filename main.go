@@ -103,14 +103,29 @@ func testMdbx() {
 	log.Printf("=== insert done, file size: %dGb, reading started", fileInfo.Size()/1024/1024/1024)
 	for i := 0; i < 1000; i++ {
 		if err = env.View(func(txn *mdbx.Txn) error {
+			defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
 			txn.RawRead = true
 			c, err := txn.OpenCursor(dbi)
 			if err != nil {
 				return err
 			}
-			for _, _, err = c.Get(nil, nil, mdbx.First); err != nil && mdbx.IsNotFound(err); _, _, err = c.Get(nil, nil, mdbx.Next) {
+			for _, _, err = c.Get(nil, nil, mdbx.First); ; _, _, err = c.Get(nil, nil, mdbx.Next) {
+				if err != nil {
+					if mdbx.IsNotFound(err) {
+						break
+					}
+					return err
+				}
+				for _, _, err = c.Get(nil, nil, mdbx.FirstDup); ; _, _, err = c.Get(nil, nil, mdbx.NextDup) {
+					if err != nil {
+						if mdbx.IsNotFound(err) {
+							break
+						}
+						return err
+					}
+				}
 			}
-			return err
+			return nil
 		}); err != nil {
 			panic(err)
 		}
@@ -214,14 +229,29 @@ func lmdbTest() {
 		panic(err)
 	}
 	log.Printf("=== insert done, file size: %dGb, reading started", fileInfo.Size()/1024/1024/1024)
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 100_000; i++ {
 		if err = env.View(func(txn *lmdb.Txn) error {
+			defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
 			txn.RawRead = true
 			c, err := txn.OpenCursor(dbi)
 			if err != nil {
 				return err
 			}
-			for _, _, err = c.Get(nil, nil, lmdb.First); err != nil && lmdb.IsNotFound(err); _, _, err = c.Get(nil, nil, lmdb.Next) {
+			for _, _, err = c.Get(nil, nil, lmdb.First); ; _, _, err = c.Get(nil, nil, lmdb.Next) {
+				if err != nil {
+					if lmdb.IsNotFound(err) {
+						break
+					}
+					return err
+				}
+				for _, _, err = c.Get(nil, nil, lmdb.FirstDup); ; _, _, err = c.Get(nil, nil, lmdb.NextDup) {
+					if err != nil {
+						if lmdb.IsNotFound(err) {
+							break
+						}
+						return err
+					}
+				}
 			}
 			return err
 		}); err != nil {
