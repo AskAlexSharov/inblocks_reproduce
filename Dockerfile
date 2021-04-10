@@ -8,6 +8,6 @@ ADD . /app
 
 WORKDIR /app
 
-RUN make test
+RUN make mdbx2
 
-CMD
+ENTRYPOINT go run .

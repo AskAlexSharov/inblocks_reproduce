@@ -1,10 +1,15 @@
-test: mdbx
-	go build .
+run_mdbx:
+	docker run -it --rm -m 512m inblocks_reproduce
 
+run_lmdb:
+	docker run -it --rm -m 512m inblocks_reproduce lmdb
 
-mdbx:
+build:
+	docker build -t inblocks_reproduce .
+
+mdbx2:
 	@echo "Building mdbx"
-	@cd mdbx/dist/ \
+	@cd mdbx-go/dist/ \
 	&& make clean && make config.h \
 	&& echo '#define MDBX_DEBUG 0' >> config.h \
 	&& echo '#define MDBX_FORCE_ASSERTIONS 0' >> config.h \
