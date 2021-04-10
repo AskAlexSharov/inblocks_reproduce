@@ -152,9 +152,9 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 		panic(err)
 	}
 	defer tmpc.Close()
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		for _, pair := range createBatch(uint8(i)) {
-			err = tmpc.Put(pair.k, pair.v, lmdb.NoOverwrite)
+			err = tmpc.Put(pair.k, pair.v, 0)
 			if err != nil {
 				panic(err)
 			}
@@ -207,9 +207,9 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 	}
 	defer tmpc.Close()
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		for _, pair := range createBatch(uint8(i)) {
-			err = tmpc.Put(pair.k, pair.v, lmdb.NoOverwrite)
+			err = tmpc.Put(pair.k, pair.v, 0)
 			if err != nil {
 				panic(err)
 			}
@@ -317,7 +317,7 @@ func insertBatchMdbx(env *mdbx.Env, dbi mdbx.DBI, pairs []*Pair) {
 
 		for _, pair := range pairs {
 			k, v := pair.k, pair.v
-			err = c.Put(k, v, mdbx.NoOverwrite)
+			err = c.Put(k, v, 0)
 
 			//_, _, err := c.Get(k, v, mdbx.GetBoth)
 			//if err != nil {
@@ -358,7 +358,7 @@ func insertBatchLmdb(env *lmdb.Env, dbi lmdb.DBI, pairs []*Pair) {
 
 		for _, pair := range pairs {
 			k, v := pair.k, pair.v
-			err = c.Put(k, v, lmdb.NoOverwrite)
+			err = c.Put(k, v, 0)
 
 			//_, _, err := c.Get(k, v, lmdb.GetBoth)
 			//if err != nil {
