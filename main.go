@@ -6,7 +6,7 @@ import (
 	mathRand "math/rand"
 	"sort"
 
-	"github.com/AskAlexSharov/inblocks_reproduce/mdbx-go/mdbx"
+	"github.com/AskAlexSharov/inblocks_reproduce/mdbx-go"
 )
 
 func main() {
