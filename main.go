@@ -61,10 +61,6 @@ use as:
 }
 
 func openMdbx() (*mdbx.Env, mdbx.DBI) {
-	if err := os.RemoveAll("./data_mdbx"); err != nil {
-		panic(err)
-	}
-
 	env, err := mdbx.NewEnv()
 	if err != nil {
 		panic(err)
@@ -179,10 +175,6 @@ func createBatch(batchId uint8) []*Pair {
 }
 
 func openLmdb() (*lmdb.Env, lmdb.DBI) {
-	if err := os.RemoveAll("./data_lmdb"); err != nil {
-		panic(err)
-	}
-
 	env, err := lmdb.NewEnv()
 	if err != nil {
 		panic(err)
