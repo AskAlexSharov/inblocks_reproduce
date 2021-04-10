@@ -16,7 +16,7 @@ import (
 
 const (
 	keysPerBatch    = 1_000
-	maxValuesPerKey = 10_000
+	maxValuesPerKey = 1_000
 )
 
 func main() {
@@ -44,7 +44,7 @@ use as:
 		env, dbi := openLmdb()
 		defer env.Close()
 
-		switch os.Args[1] {
+		switch os.Args[2] {
 		case "read":
 			readLmdb(env, dbi)
 		case "write":
@@ -57,7 +57,7 @@ use as:
 		log.Printf("testing mdbx")
 		env, dbi := openMdbx()
 		defer env.Close()
-		switch os.Args[1] {
+		switch os.Args[2] {
 		case "read":
 			readMdbx(env, dbi)
 		case "write":
