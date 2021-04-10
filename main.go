@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	mathRand "math/rand"
 	"os"
 	"sort"
 	"syscall"
@@ -16,7 +15,7 @@ import (
 )
 
 const (
-	keysPerBatch    = 100_000
+	keysPerBatch    = 1_000
 	maxValuesPerKey = 10_000
 )
 
@@ -122,34 +121,32 @@ func writeMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 }
 
 func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
-	for i := 0; i < 10; i++ {
-		if err := env.View(func(txn *mdbx.Txn) error {
-			defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
-			txn.RawRead = true
-			c, err := txn.OpenCursor(dbi)
+	if err := env.View(func(txn *mdbx.Txn) error {
+		defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
+		txn.RawRead = true
+		c, err := txn.OpenCursor(dbi)
+		if err != nil {
+			return err
+		}
+		for k, _, err := c.Get(nil, nil, mdbx.First); ; k, _, err = c.Get(nil, nil, mdbx.Next) {
 			if err != nil {
+				if mdbx.IsNotFound(err) {
+					break
+				}
 				return err
 			}
-			for k, _, err := c.Get(nil, nil, mdbx.First); ; k, _, err = c.Get(nil, nil, mdbx.Next) {
+			for _, _, err = c.Get(k, nil, mdbx.FirstDup); ; _, _, err = c.Get(k, nil, mdbx.NextDup) {
 				if err != nil {
 					if mdbx.IsNotFound(err) {
 						break
 					}
 					return err
 				}
-				for _, _, err = c.Get(k, nil, mdbx.FirstDup); ; _, _, err = c.Get(k, nil, mdbx.NextDup) {
-					if err != nil {
-						if mdbx.IsNotFound(err) {
-							break
-						}
-						return err
-					}
-				}
 			}
-			return nil
-		}); err != nil {
-			panic(err)
 		}
+		return nil
+	}); err != nil {
+		panic(err)
 	}
 }
 func createBatch(batchId uint8) []*Pair {
@@ -163,7 +160,7 @@ func createBatch(batchId uint8) []*Pair {
 		//	panic(err)
 		//}
 		key = next(key)
-		for h := 0; h < mathRand.Intn(maxValuesPerKey); h++ {
+		for h := 0; h < maxValuesPerKey; h++ {
 			val = next(val)
 			pairs = append(pairs, &Pair{k: copyBytes(key), v: copyBytes(val)})
 		}
