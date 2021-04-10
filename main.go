@@ -215,7 +215,7 @@ func openLmdb() (*lmdb.Env, lmdb.DBI) {
 func writeLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 	log.Printf("=== in sert started")
 	for i := 0; i < 100; i++ {
-		fileInfo, err := os.Stat("./data_lmdb/data.db")
+		fileInfo, err := os.Stat("./data_lmdb/data.mdb")
 		if err != nil {
 			panic(err)
 		}
@@ -233,14 +233,14 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 			if err != nil {
 				return err
 			}
-			for _, _, err = c.Get(nil, nil, lmdb.First); ; _, _, err = c.Get(nil, nil, lmdb.Next) {
+			for k, _, err := c.Get(nil, nil, lmdb.First); ; k, _, err = c.Get(k, nil, lmdb.Next) {
 				if err != nil {
 					if lmdb.IsNotFound(err) {
 						break
 					}
 					return err
 				}
-				for _, _, err = c.Get(nil, nil, lmdb.FirstDup); ; _, _, err = c.Get(nil, nil, lmdb.NextDup) {
+				for _, _, err = c.Get(k, nil, lmdb.FirstDup); ; _, _, err = c.Get(k, nil, lmdb.NextDup) {
 					if err != nil {
 						if lmdb.IsNotFound(err) {
 							break
@@ -267,7 +267,7 @@ func insertBatchMdbx(env *mdbx.Env, dbi mdbx.DBI, pairs []*Pair) {
 
 		for _, pair := range pairs {
 			k, v := pair.k, pair.v
-			err = c.Put(k, v, mdbx.AppendDup)
+			err = c.Put(k, v, 0)
 
 			//_, _, err := c.Get(k, v, mdbx.GetBoth)
 			//if err != nil {
@@ -308,7 +308,7 @@ func insertBatchLmdb(env *lmdb.Env, dbi lmdb.DBI, pairs []*Pair) {
 
 		for _, pair := range pairs {
 			k, v := pair.k, pair.v
-			err = c.Put(k, v, lmdb.AppendDup)
+			err = c.Put(k, v, 0)
 
 			//_, _, err := c.Get(k, v, lmdb.GetBoth)
 			//if err != nil {
