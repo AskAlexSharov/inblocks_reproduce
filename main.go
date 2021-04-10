@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"sort"
 	"syscall"
 	"time"
@@ -132,64 +133,112 @@ func writeMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 }
 
 func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
-	if err := env.View(func(txn *mdbx.Txn) error {
-		defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
-		txn.RawRead = true
-		c, err := txn.OpenCursor(dbi)
-		if err != nil {
-			return err
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	txn, err := env.BeginTxn(nil, 0)
+	if err != nil {
+		panic(err)
+	}
+	defer txn.Abort()
+
+	log.Printf("make tx dirty: started")
+	tmpdbi, err := txn.OpenDBI("tmp", lmdb.Create|lmdb.DupSort, nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	tmpc, err := txn.OpenCursor(tmpdbi)
+	if err != nil {
+		panic(err)
+	}
+	defer tmpc.Close()
+	for i := 0; i < 100; i++ {
+		for _, pair := range createBatch(uint8(i)) {
+			err = tmpc.Put(pair.k, pair.v, lmdb.NoOverwrite)
+			if err != nil {
+				panic(err)
+			}
 		}
-		defer c.Close()
-		for k, _, err := c.Get(nil, nil, mdbx.First); ; k, _, err = c.Get(nil, nil, mdbx.NextNoDup) {
+	}
+	log.Printf("make tx dirty: done")
+
+	defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
+	txn.RawRead = true
+	c, err := txn.OpenCursor(dbi)
+	if err != nil {
+		panic(err)
+	}
+	defer c.Close()
+	for k, _, err := c.Get(nil, nil, mdbx.First); ; k, _, err = c.Get(nil, nil, mdbx.NextNoDup) {
+		if err != nil {
+			if mdbx.IsNotFound(err) {
+				break
+			}
+			panic(err)
+		}
+		for _, _, err = c.Get(k, nil, mdbx.FirstDup); ; _, _, err = c.Get(k, nil, mdbx.NextDup) {
 			if err != nil {
 				if mdbx.IsNotFound(err) {
 					break
 				}
-				return err
-			}
-			for _, _, err = c.Get(k, nil, mdbx.FirstDup); ; _, _, err = c.Get(k, nil, mdbx.NextDup) {
-				if err != nil {
-					if mdbx.IsNotFound(err) {
-						break
-					}
-					return err
-				}
+				panic(err)
 			}
 		}
-		return nil
-	}); err != nil {
-		panic(err)
 	}
 }
 
 func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
-	if err := env.View(func(txn *lmdb.Txn) error {
-		defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
-		txn.RawRead = true
-		c, err := txn.OpenCursor(dbi)
-		if err != nil {
-			return err
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	txn, err := env.BeginTxn(nil, 0)
+	if err != nil {
+		panic(err)
+	}
+	defer txn.Abort()
+
+	tmpdbi, err := txn.OpenDBI("tmp", lmdb.Create|lmdb.DupSort)
+	if err != nil {
+		panic(err)
+	}
+	tmpc, err := txn.OpenCursor(tmpdbi)
+	if err != nil {
+		panic(err)
+	}
+	defer tmpc.Close()
+
+	for i := 0; i < 100; i++ {
+		for _, pair := range createBatch(uint8(i)) {
+			err = tmpc.Put(pair.k, pair.v, lmdb.NoOverwrite)
+			if err != nil {
+				panic(err)
+			}
 		}
-		defer c.Close()
-		for k, _, err := c.Get(nil, nil, lmdb.First); ; k, _, err = c.Get(nil, nil, lmdb.NextNoDup) {
+	}
+
+	defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
+	txn.RawRead = true
+	c, err := txn.OpenCursor(dbi)
+	if err != nil {
+		panic(err)
+	}
+	defer c.Close()
+
+	for k, _, err := c.Get(nil, nil, lmdb.First); ; k, _, err = c.Get(nil, nil, lmdb.NextNoDup) {
+		if err != nil {
+			if lmdb.IsNotFound(err) {
+				break
+			}
+			panic(err)
+		}
+		for _, _, err = c.Get(k, nil, lmdb.FirstDup); ; _, _, err = c.Get(k, nil, lmdb.NextDup) {
 			if err != nil {
 				if lmdb.IsNotFound(err) {
 					break
 				}
-				return err
-			}
-			for _, _, err = c.Get(k, nil, lmdb.FirstDup); ; _, _, err = c.Get(k, nil, lmdb.NextDup) {
-				if err != nil {
-					if lmdb.IsNotFound(err) {
-						break
-					}
-					return err
-				}
+				panic(err)
 			}
 		}
-		return err
-	}); err != nil {
-		panic(err)
 	}
 }
 
@@ -268,7 +317,7 @@ func insertBatchMdbx(env *mdbx.Env, dbi mdbx.DBI, pairs []*Pair) {
 
 		for _, pair := range pairs {
 			k, v := pair.k, pair.v
-			err = c.Put(k, v, 0)
+			err = c.Put(k, v, mdbx.NoOverwrite)
 
 			//_, _, err := c.Get(k, v, mdbx.GetBoth)
 			//if err != nil {
@@ -309,7 +358,7 @@ func insertBatchLmdb(env *lmdb.Env, dbi lmdb.DBI, pairs []*Pair) {
 
 		for _, pair := range pairs {
 			k, v := pair.k, pair.v
-			err = c.Put(k, v, 0)
+			err = c.Put(k, v, lmdb.NoOverwrite)
 
 			//_, _, err := c.Get(k, v, lmdb.GetBoth)
 			//if err != nil {
