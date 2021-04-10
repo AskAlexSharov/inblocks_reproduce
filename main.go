@@ -37,25 +37,36 @@ use as:
 `)
 		return
 	}
-	if os.Args[1] == "lmdb" {
+
+	switch os.Args[1] {
+	case "lmdb":
 		log.Printf("testing lmdb")
 		env, dbi := openLmdb()
 		defer env.Close()
 
-		if os.Args[1] == "write" {
-			writeLmdb(env, dbi)
-		} else {
+		switch os.Args[1] {
+		case "read":
 			readLmdb(env, dbi)
+		case "write":
+			writeLmdb(env, dbi)
+		default:
+			fmt.Printf("only 'read' and 'write' modes expected")
 		}
 		return
-	}
-	log.Printf("testing mdbx")
-	env, dbi := openMdbx()
-	defer env.Close()
-	if os.Args[1] == "write" {
-		writeMdbx(env, dbi)
-	} else {
-		readMdbx(env, dbi)
+	case "mdbx":
+		log.Printf("testing mdbx")
+		env, dbi := openMdbx()
+		defer env.Close()
+		switch os.Args[1] {
+		case "read":
+			readMdbx(env, dbi)
+		case "write":
+			writeMdbx(env, dbi)
+		default:
+			fmt.Printf("only 'read' and 'write' modes expected")
+		}
+	default:
+		fmt.Printf("only 'lmdb' and 'mdbx' actions expected")
 	}
 }
 
