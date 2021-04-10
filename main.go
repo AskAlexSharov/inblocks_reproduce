@@ -171,7 +171,7 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 			return err
 		}
 		defer c.Close()
-		for k, _, err := c.Get(nil, nil, lmdb.First); ; k, _, err = c.Get(nil, nil, lmdb.Next) {
+		for k, _, err := c.Get(nil, nil, lmdb.First); ; k, _, err = c.Get(nil, nil, lmdb.NextNoDup) {
 			if err != nil {
 				if lmdb.IsNotFound(err) {
 					break
@@ -192,6 +192,7 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 		panic(err)
 	}
 }
+
 func createBatch(batchId uint8) []*Pair {
 	val := make([]byte, 44)
 	key := make([]byte, 20)
