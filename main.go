@@ -197,6 +197,7 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 	}
 	defer txn.Abort()
 
+	log.Printf("make tx dirty: started")
 	tmpdbi, err := txn.OpenDBI("tmp", lmdb.Create|lmdb.DupSort)
 	if err != nil {
 		panic(err)
@@ -215,6 +216,7 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 			}
 		}
 	}
+	log.Printf("make tx dirty: done")
 
 	defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
 	txn.RawRead = true
