@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	mathRand "math/rand"
 	"os"
@@ -27,16 +28,39 @@ func main() {
 			time.Sleep(5 * time.Second)
 		}
 	}()
-	if len(os.Args) > 1 && os.Args[1] == "lmdb" {
+	if len(os.Args) != 3 {
+		fmt.Printf(`
+use as:
+./inblocks_reproduce mdbx write
+./inblocks_reproduce mdbx read
+./inblocks_reproduce lmdb write
+./inblocks_reproduce lmdb reads
+`)
+		return
+	}
+	if os.Args[1] == "lmdb" {
 		log.Printf("testing lmdb")
-		lmdbTest()
+		env, dbi := openLmdb()
+		defer env.Close()
+
+		if os.Args[1] == "write" {
+			writeLmdb(env, dbi)
+		} else {
+			readLmdb(env, dbi)
+		}
 		return
 	}
 	log.Printf("testing mdbx")
-	testMdbx()
+	env, dbi := openMdbx()
+	defer env.Close()
+	if os.Args[1] == "write" {
+		writeMdbx(env, dbi)
+	} else {
+		readMdbx(env, dbi)
+	}
 }
 
-func testMdbx() {
+func openMdbx() (*mdbx.Env, mdbx.DBI) {
 	if err := os.RemoveAll("./data_mdbx"); err != nil {
 		panic(err)
 	}
@@ -63,8 +87,6 @@ func testMdbx() {
 	if err != nil {
 		panic(err)
 	}
-	defer env.Close()
-
 	// 1/8 is good for transactions with a lot of modifications - to reduce invalidation size.
 	// But TG app now using Batch and etl.Collectors to avoid writing to DB frequently changing data.
 	// It means most of our writes are: APPEND or "single UPSERT per key during transaction"
@@ -80,16 +102,18 @@ func testMdbx() {
 	if err = env.SetOption(mdbx.OptTxnDpLimit, 128*1024); err != nil {
 		panic(err)
 	}
-
 	var dbi mdbx.DBI
-	if err = env.Update(func(txn *mdbx.Txn) error {
+	if err := env.Update(func(txn *mdbx.Txn) error {
 		txn.RawRead = true
 		dbi, err = txn.OpenDBI("alex", mdbx.Create|mdbx.DupSort, nil, nil)
 		return err
 	}); err != nil {
 		panic(err)
 	}
+	return env, dbi
+}
 
+func writeMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 	log.Printf("=== insert started")
 	for i := 0; i < 100; i++ {
 		fileInfo, err := os.Stat("./data_mdbx/mdbx.dat")
@@ -97,10 +121,13 @@ func testMdbx() {
 			panic(err)
 		}
 		log.Printf("=== insert progress: %d%%, fileSize: %dGb", i, fileInfo.Size()/1024/1024/1024)
-		insertBatch(env, dbi, createBatch(uint8(i)))
+		insertBatchMdbx(env, dbi, createBatch(uint8(i)))
 	}
+}
+
+func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 	for i := 0; i < 10; i++ {
-		if err = env.View(func(txn *mdbx.Txn) error {
+		if err := env.View(func(txn *mdbx.Txn) error {
 			defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
 			txn.RawRead = true
 			c, err := txn.OpenCursor(dbi)
@@ -129,7 +156,6 @@ func testMdbx() {
 		}
 	}
 }
-
 func createBatch(batchId uint8) []*Pair {
 	val := make([]byte, 44)
 	key := make([]byte, 20)
@@ -151,7 +177,86 @@ func createBatch(batchId uint8) []*Pair {
 
 	return pairs
 }
-func insertBatch(env *mdbx.Env, dbi mdbx.DBI, pairs []*Pair) {
+
+func openLmdb() (*lmdb.Env, lmdb.DBI) {
+	if err := os.RemoveAll("./data_lmdb"); err != nil {
+		panic(err)
+	}
+
+	env, err := lmdb.NewEnv()
+	if err != nil {
+		panic(err)
+	}
+
+	if err = env.SetMaxDBs(100); err != nil {
+		panic(err)
+	}
+	if err = env.SetMapSize(int64(1 * datasize.TB)); err != nil {
+		panic(err)
+	}
+	if err = os.MkdirAll("./data_lmdb", 0744); err != nil {
+		panic(err)
+	}
+	err = env.Open("./data_lmdb", mdbx.NoReadahead, 0644)
+	if err != nil {
+		panic(err)
+	}
+	var dbi lmdb.DBI
+	if err := env.Update(func(txn *lmdb.Txn) error {
+		txn.RawRead = true
+		dbi, err = txn.OpenDBI("alex", lmdb.Create|lmdb.DupSort)
+		return err
+	}); err != nil {
+		panic(err)
+	}
+
+	return env, dbi
+}
+func writeLmdb(env *lmdb.Env, dbi lmdb.DBI) {
+	log.Printf("=== in sert started")
+	for i := 0; i < 100; i++ {
+		fileInfo, err := os.Stat("./data_lmdb/data.db")
+		if err != nil {
+			panic(err)
+		}
+		log.Printf("=== insert progress: %d%%, fileSize: %dGb", i, fileInfo.Size()/1024/1024/1024)
+		insertBatchLmdb(env, dbi, createBatch(uint8(i)))
+	}
+}
+
+func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
+	for i := 0; i < 10; i++ {
+		if err := env.View(func(txn *lmdb.Txn) error {
+			defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
+			txn.RawRead = true
+			c, err := txn.OpenCursor(dbi)
+			if err != nil {
+				return err
+			}
+			for _, _, err = c.Get(nil, nil, lmdb.First); ; _, _, err = c.Get(nil, nil, lmdb.Next) {
+				if err != nil {
+					if lmdb.IsNotFound(err) {
+						break
+					}
+					return err
+				}
+				for _, _, err = c.Get(nil, nil, lmdb.FirstDup); ; _, _, err = c.Get(nil, nil, lmdb.NextDup) {
+					if err != nil {
+						if lmdb.IsNotFound(err) {
+							break
+						}
+						return err
+					}
+				}
+			}
+			return err
+		}); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func insertBatchMdbx(env *mdbx.Env, dbi mdbx.DBI, pairs []*Pair) {
 	if err := env.Update(func(txn *mdbx.Txn) error {
 		txn.RawRead = true
 		c, err := txn.OpenCursor(dbi)
@@ -192,80 +297,6 @@ func insertBatch(env *mdbx.Env, dbi mdbx.DBI, pairs []*Pair) {
 	}
 }
 
-func lmdbTest() {
-	if err := os.RemoveAll("./data_lmdb"); err != nil {
-		panic(err)
-	}
-
-	env, err := lmdb.NewEnv()
-	if err != nil {
-		panic(err)
-	}
-
-	if err = env.SetMaxDBs(100); err != nil {
-		panic(err)
-	}
-	if err = env.SetMapSize(int64(1 * datasize.TB)); err != nil {
-		panic(err)
-	}
-	if err = os.MkdirAll("./data_lmdb", 0744); err != nil {
-		panic(err)
-	}
-	err = env.Open("./data_lmdb", mdbx.NoReadahead, 0644)
-	if err != nil {
-		panic(err)
-	}
-	defer env.Close()
-
-	var dbi lmdb.DBI
-	if err = env.Update(func(txn *lmdb.Txn) error {
-		txn.RawRead = true
-		dbi, err = txn.OpenDBI("alex", lmdb.Create|lmdb.DupSort)
-		return err
-	}); err != nil {
-		panic(err)
-	}
-
-	log.Printf("=== insert started")
-	for i := 0; i < 100; i++ {
-		fileInfo, err := os.Stat("./data_lmdb/data.db")
-		if err != nil {
-			panic(err)
-		}
-		log.Printf("=== insert progress: %d%%, fileSize: %dGb", i, fileInfo.Size()/1024/1024/1024)
-		insertBatchLmdb(env, dbi, createBatch(uint8(i)))
-	}
-	for i := 0; i < 10; i++ {
-		if err = env.View(func(txn *lmdb.Txn) error {
-			defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
-			txn.RawRead = true
-			c, err := txn.OpenCursor(dbi)
-			if err != nil {
-				return err
-			}
-			for _, _, err = c.Get(nil, nil, lmdb.First); ; _, _, err = c.Get(nil, nil, lmdb.Next) {
-				if err != nil {
-					if lmdb.IsNotFound(err) {
-						break
-					}
-					return err
-				}
-				for _, _, err = c.Get(nil, nil, lmdb.FirstDup); ; _, _, err = c.Get(nil, nil, lmdb.NextDup) {
-					if err != nil {
-						if lmdb.IsNotFound(err) {
-							break
-						}
-						return err
-					}
-				}
-			}
-			return err
-		}); err != nil {
-			panic(err)
-		}
-	}
-}
-
 func insertBatchLmdb(env *lmdb.Env, dbi lmdb.DBI, pairs []*Pair) {
 	if err := env.Update(func(txn *lmdb.Txn) error {
 		txn.RawRead = true
@@ -277,23 +308,25 @@ func insertBatchLmdb(env *lmdb.Env, dbi lmdb.DBI, pairs []*Pair) {
 
 		for _, pair := range pairs {
 			k, v := pair.k, pair.v
-			_, _, err := c.Get(k, v, lmdb.GetBoth)
-			if err != nil {
-				if lmdb.IsNotFound(err) {
-					err = c.Put(k, v, 0)
-					if err != nil {
-						panic(err)
-					}
-					continue
-				}
-				panic(err)
-			}
-			err = c.Del(lmdb.Current)
-			if err != nil {
-				panic(err)
-			}
+			err = c.Put(k, v, lmdb.AppendDup)
 
-			err = c.Put(k, v, 0)
+			//_, _, err := c.Get(k, v, lmdb.GetBoth)
+			//if err != nil {
+			//	if lmdb.IsNotFound(err) {
+			//		err = c.Put(k, v, 0)
+			//		if err != nil {
+			//			panic(err)
+			//		}
+			//		continue
+			//	}
+			//	panic(err)
+			//}
+			//err = c.Del(lmdb.Current)
+			//if err != nil {
+			//	panic(err)
+			//}
+			//
+			//err = c.Put(k, v, 0)
 			if err != nil {
 				panic(err)
 			}
