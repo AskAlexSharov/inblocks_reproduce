@@ -23,7 +23,7 @@ mdbx2:
 	&& CFLAGS_EXTRA="-Wno-deprecated-declarations" make mdbx-static.o
 
 db-tools: mdbx2
-	mkdir $(GOBIN)
+	mkdir -p $(GOBIN)
 
 	@echo "Building bb-tools"
 	go mod vendor; cd vendor/github.com/ledgerwatch/lmdb-go/dist; make clean mdb_stat mdb_copy mdb_dump mdb_drop mdb_load; cp mdb_stat $(GOBIN); cp mdb_copy $(GOBIN); cp mdb_dump $(GOBIN); cp mdb_drop $(GOBIN); cp mdb_load $(GOBIN); cd ../../../../..; rm -rf vendor
