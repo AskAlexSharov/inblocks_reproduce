@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"runtime/pprof"
 	"sort"
 	"syscall"
 	"time"
@@ -18,10 +19,27 @@ import (
 
 const (
 	keysPerBatch = 1_000
-	readFrom     = 11_800_000
+	readFrom     = 10_000_000
+	readTo       = 11_000_000
 )
 
 func main() {
+	f, err := os.Create("cpu.out")
+	if err != nil {
+		log.Fatal(err)
+	}
+	pprof.StartCPUProfile(f)
+	defer pprof.StopCPUProfile()
+
+	defer func() {
+		f, err := os.Create("cpu.out")
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.WriteHeapProfile(f)
+		f.Close()
+	}()
+
 	go func() {
 		for {
 			in, out, _, _ := getRUsage()
@@ -29,7 +47,7 @@ func main() {
 			time.Sleep(5 * time.Second)
 		}
 	}()
-	if len(os.Args) != 3 {
+	if len(os.Args) < 3 {
 		fmt.Printf(`
 use as:
 ./inblocks_reproduce mdbx write
@@ -151,10 +169,10 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 	}
 	defer c.Close()
 	seek := make([]byte, 8)
-	for num := uint64(readFrom); num < 12_200_000; num++ {
+	for num := uint64(readFrom); num < readTo; num++ {
 		binary.BigEndian.PutUint64(seek, num)
 		c.Get(seek, nil, mdbx.SetRange)
-		if num%1_000 == 0 {
+		if num%10_000 == 0 {
 			fmt.Printf("%d\n", num)
 		}
 	}
@@ -178,7 +196,7 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 	}
 	defer c.Close()
 	seek := make([]byte, 8)
-	for num := uint64(readFrom); num < 12_200_000; num++ {
+	for num := uint64(readFrom); num < readTo; num++ {
 		binary.BigEndian.PutUint64(seek, num)
 		c.Get(seek, nil, lmdb.SetRange)
 		if num%1_000 == 0 {
