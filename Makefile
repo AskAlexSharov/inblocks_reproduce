@@ -8,6 +8,7 @@ run_lmdb:
 	docker run -it --rm -m 512m inblocks_reproduce lmdb
 
 docker:
+	mkdir data_lmdb data_mdbx
 	docker build -t inblocks_reproduce .
 
 mdbx2:
