@@ -2,9 +2,9 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -19,8 +19,8 @@ import (
 
 const (
 	keysPerBatch = 1_000
-	readFrom     = 11_900_000
-	readTo       = 12_200_000
+	readFrom     = 7_000_000
+	readTo       = 12_000_000
 )
 
 func main() {
@@ -131,7 +131,7 @@ func openMdbx() (*mdbx.Env, mdbx.DBI) {
 	var dbi mdbx.DBI
 	if err := env.Update(func(txn *mdbx.Txn) error {
 		txn.RawRead = true
-		dbi, err = txn.OpenDBI("txSenders2", 0, nil, nil)
+		dbi, err = txn.OpenDBI("PLAIN-CST2", 0, nil, nil)
 		return err
 	}); err != nil {
 		panic(err)
@@ -172,7 +172,7 @@ func openLmdb() (*lmdb.Env, lmdb.DBI) {
 	var dbi lmdb.DBI
 	if err := env.Update(func(txn *lmdb.Txn) error {
 		txn.RawRead = true
-		dbi, err = txn.OpenDBI("txSenders2", 0)
+		dbi, err = txn.OpenDBI("PLAIN-CST2", 0)
 		s, err := txn.Stat(dbi)
 		if err != nil {
 			panic(err)
@@ -189,7 +189,7 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	txn, err := env.BeginTxn(nil, mdbx.Readonly)
+	txn, err := env.BeginTxn(nil, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -202,16 +202,12 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 		panic(err)
 	}
 	defer c.Close()
-	seek := make([]byte, 8)
-	for num := uint64(readFrom); num < readTo; num++ {
-		binary.BigEndian.PutUint64(seek, num)
-		_, _, err = c.Get(seek, nil, mdbx.SetRange)
+	for i := 0; i < 1000; i++ {
+		k, v, err := c.Get([]byte{uint8(rand.Intn(255)), uint8(rand.Intn(255))}, nil, mdbx.SetRange)
 		if err != nil {
 			panic(err)
 		}
-		if num%10_000 == 0 {
-			fmt.Printf("%d\n", num)
-		}
+		_ = c.Put(k, v, mdbx.NoOverwrite)
 	}
 }
 
@@ -219,7 +215,7 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	txn, err := env.BeginTxn(nil, lmdb.Readonly)
+	txn, err := env.BeginTxn(nil, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -232,16 +228,12 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 		panic(err)
 	}
 	defer c.Close()
-	seek := make([]byte, 8)
-	for num := uint64(readFrom); num < readTo; num++ {
-		binary.BigEndian.PutUint64(seek, num)
-		_, _, err = c.Get(seek, nil, lmdb.SetRange)
+	for i := 0; i < 1000; i++ {
+		k, v, err := c.Get([]byte{uint8(rand.Intn(255)), uint8(rand.Intn(255))}, nil, mdbx.SetRange)
 		if err != nil {
 			panic(err)
 		}
-		if num%10_000 == 0 {
-			fmt.Printf("%d\n", num)
-		}
+		_ = c.Put(k, v, lmdb.NoOverwrite)
 	}
 }
 
