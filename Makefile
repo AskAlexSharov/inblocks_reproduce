@@ -1,4 +1,5 @@
 GOBIN = $(CURDIR)/build/bin
+GOBUILD = go build -trimpath -tags "mdbx"
 
 run_mdbx:
 	docker run -it --rm -m 512m inblocks_reproduce
@@ -22,6 +23,8 @@ mdbx2:
 	&& CFLAGS_EXTRA="-Wno-deprecated-declarations" make mdbx-static.o
 
 db-tools: mdbx2
+	mkdir $(GOBIN)
+
 	@echo "Building bb-tools"
 	go mod vendor; cd vendor/github.com/ledgerwatch/lmdb-go/dist; make clean mdb_stat mdb_copy mdb_dump mdb_drop mdb_load; cp mdb_stat $(GOBIN); cp mdb_copy $(GOBIN); cp mdb_dump $(GOBIN); cp mdb_drop $(GOBIN); cp mdb_load $(GOBIN); cd ../../../../..; rm -rf vendor
 	$(GOBUILD) -o $(GOBIN)/lmdbgo_copy github.com/ledgerwatch/lmdb-go/cmd/lmdb_copy
