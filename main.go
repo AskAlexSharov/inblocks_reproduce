@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	keysPerBatch    = 1_000
-	maxValuesPerKey = 1_000
+	keysPerBatch = 10_000
 )
 
 func main() {
@@ -112,7 +111,7 @@ func openMdbx() (*mdbx.Env, mdbx.DBI) {
 	var dbi mdbx.DBI
 	if err := env.Update(func(txn *mdbx.Txn) error {
 		txn.RawRead = true
-		dbi, err = txn.OpenDBI("alex", mdbx.Create|mdbx.DupSort, nil, nil)
+		dbi, err = txn.OpenDBI("alex", mdbx.Create, nil, nil)
 		return err
 	}); err != nil {
 		panic(err)
@@ -142,26 +141,6 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 	}
 	defer txn.Abort()
 
-	log.Printf("make tx dirty: started")
-	tmpdbi, err := txn.OpenDBI("tmp", lmdb.Create|lmdb.DupSort, nil, nil)
-	if err != nil {
-		panic(err)
-	}
-	tmpc, err := txn.OpenCursor(tmpdbi)
-	if err != nil {
-		panic(err)
-	}
-	defer tmpc.Close()
-	for i := 0; i < 10; i++ {
-		for _, pair := range createBatch(uint8(i)) {
-			err = tmpc.Put(pair.k, pair.v, 0)
-			if err != nil {
-				panic(err)
-			}
-		}
-	}
-	log.Printf("make tx dirty: done")
-
 	defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
 	txn.RawRead = true
 	c, err := txn.OpenCursor(dbi)
@@ -169,20 +148,15 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 		panic(err)
 	}
 	defer c.Close()
-	for k, _, err := c.Get(nil, nil, mdbx.First); ; k, _, err = c.Get(nil, nil, mdbx.NextNoDup) {
+	for _, v, err := c.Get(nil, nil, mdbx.First); ; _, v, err = c.Get(nil, nil, mdbx.Next) {
 		if err != nil {
 			if mdbx.IsNotFound(err) {
 				break
 			}
 			panic(err)
 		}
-		for _, _, err = c.Get(k, nil, mdbx.FirstDup); ; _, _, err = c.Get(k, nil, mdbx.NextDup) {
-			if err != nil {
-				if mdbx.IsNotFound(err) {
-					break
-				}
-				panic(err)
-			}
+		for i := 0; i < len(v); i++ {
+			_ = v[i]
 		}
 	}
 }
@@ -197,27 +171,6 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 	}
 	defer txn.Abort()
 
-	log.Printf("make tx dirty: started")
-	tmpdbi, err := txn.OpenDBI("tmp", lmdb.Create|lmdb.DupSort)
-	if err != nil {
-		panic(err)
-	}
-	tmpc, err := txn.OpenCursor(tmpdbi)
-	if err != nil {
-		panic(err)
-	}
-	defer tmpc.Close()
-
-	for i := 0; i < 10; i++ {
-		for _, pair := range createBatch(uint8(i)) {
-			err = tmpc.Put(pair.k, pair.v, 0)
-			if err != nil {
-				panic(err)
-			}
-		}
-	}
-	log.Printf("make tx dirty: done")
-
 	defer func(t time.Time) { log.Printf("read loop took: %s", time.Since(t)) }(time.Now())
 	txn.RawRead = true
 	c, err := txn.OpenCursor(dbi)
@@ -226,43 +179,28 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 	}
 	defer c.Close()
 
-	for k, _, err := c.Get(nil, nil, lmdb.First); ; k, _, err = c.Get(nil, nil, lmdb.NextNoDup) {
+	for _, v, err := c.Get(nil, nil, lmdb.First); ; _, v, err = c.Get(nil, nil, lmdb.Next) {
 		if err != nil {
 			if lmdb.IsNotFound(err) {
 				break
 			}
 			panic(err)
 		}
-		for _, _, err = c.Get(k, nil, lmdb.FirstDup); ; _, _, err = c.Get(k, nil, lmdb.NextDup) {
-			if err != nil {
-				if lmdb.IsNotFound(err) {
-					break
-				}
-				panic(err)
-			}
+		for i := 0; i < len(v); i++ {
+			_ = v[i]
 		}
 	}
 }
 
 func createBatch(batchId uint8) []*Pair {
-	val := make([]byte, 44)
+	val := make([]byte, 32*1024)
 	key := make([]byte, 20)
 	key[0] = batchId
 	var pairs []*Pair
 	for j := 0; j < keysPerBatch; j++ {
-		//_, err := rand.Read(key)
-		//if err != nil {
-		//	panic(err)
-		//}
 		key = next(key)
-		for h := 0; h < maxValuesPerKey; h++ {
-			val = next(val)
-			pairs = append(pairs, &Pair{k: copyBytes(key), v: copyBytes(val)})
-		}
-
+		pairs = append(pairs, &Pair{k: copyBytes(key), v: copyBytes(val)})
 	}
-	//sortPairs(pairs)
-
 	return pairs
 }
 
@@ -288,7 +226,7 @@ func openLmdb() (*lmdb.Env, lmdb.DBI) {
 	var dbi lmdb.DBI
 	if err := env.Update(func(txn *lmdb.Txn) error {
 		txn.RawRead = true
-		dbi, err = txn.OpenDBI("alex", lmdb.Create|lmdb.DupSort)
+		dbi, err = txn.OpenDBI("alex", lmdb.Create)
 		return err
 	}); err != nil {
 		panic(err)
