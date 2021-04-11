@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -202,13 +201,26 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 		panic(err)
 	}
 	defer c.Close()
-	for i := 0; i < 1000; i++ {
-		k, v, err := c.Get([]byte{uint8(rand.Intn(255)), uint8(rand.Intn(255))}, nil, mdbx.SetRange)
+	i := 0
+	for _, _, err = c.Get(nil, nil, mdbx.First); ; _, _, err = c.Get(nil, nil, mdbx.Next) {
 		if err != nil {
+			if mdbx.IsNotFound(err) {
+				break
+			}
 			panic(err)
 		}
-		_ = c.Put(k, v, mdbx.NoOverwrite)
+		i++
+		if i > 100_000 {
+			break
+		}
 	}
+	//for i := 0; i < 10_000; i++ {
+	//	k, v, err := c.Get([]byte{uint8(rand.Intn(255)), uint8(rand.Intn(255))}, nil, mdbx.SetRange)
+	//	if err != nil {
+	//		panic(err)
+	//	}
+	//	_ = c.Put(k, v, mdbx.NoOverwrite)
+	//}
 }
 
 func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
@@ -228,13 +240,26 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 		panic(err)
 	}
 	defer c.Close()
-	for i := 0; i < 1000; i++ {
-		k, v, err := c.Get([]byte{uint8(rand.Intn(255)), uint8(rand.Intn(255))}, nil, mdbx.SetRange)
+	i := 0
+	for _, _, err = c.Get(nil, nil, lmdb.First); ; _, _, err = c.Get(nil, nil, lmdb.Next) {
 		if err != nil {
+			if lmdb.IsNotFound(err) {
+				break
+			}
 			panic(err)
 		}
-		_ = c.Put(k, v, lmdb.NoOverwrite)
+		i++
+		if i > 100_000 {
+			break
+		}
 	}
+	//for i := 0; i < 10_000; i++ {
+	//	k, v, err := c.Get([]byte{uint8(rand.Intn(255)), uint8(rand.Intn(255))}, nil, lmdb.SetRange)
+	//	if err != nil {
+	//		panic(err)
+	//	}
+	//	_ = c.Put(k, v, lmdb.NoOverwrite)
+	//}
 }
 
 func writeMdbx(env *mdbx.Env, dbi mdbx.DBI) {

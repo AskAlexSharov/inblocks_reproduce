@@ -2,7 +2,7 @@ GOBIN = $(CURDIR)/build/bin
 GOBUILD = go build -trimpath -tags "mdbx"
 
 docker_run:
-	docker run -it --rm -m 512m --memory-swap 0 --memory-swappiness 0 -v $(CURDIR):/app inblocks_reproduce bash
+	docker run -it --rm -m 64m --memory-swap 0 --memory-swappiness 0 -v $(CURDIR):/app inblocks_reproduce bash
 
 docker: mdbx2 db-tools
 	mkdir -p data_lmdb
