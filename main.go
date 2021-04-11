@@ -193,7 +193,7 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 }
 
 func createBatch(batchId uint8) []*Pair {
-	val := make([]byte, 32*1024)
+	val := make([]byte, 32*10*1024)
 	key := make([]byte, 20)
 	key[0] = batchId
 	var pairs []*Pair

@@ -1,7 +1,7 @@
 FROM golang:1.16-buster
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-		git \
+		git time \
 	&& rm -rf /var/lib/apt/lists/*
 
 ADD . /app
