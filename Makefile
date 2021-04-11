@@ -1,3 +1,5 @@
+GOBIN = $(CURDIR)/build/bin
+
 run_mdbx:
 	docker run -it --rm -m 512m inblocks_reproduce
 
