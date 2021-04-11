@@ -7,7 +7,7 @@ run_mdbx:
 run_lmdb:
 	docker run -it --rm -m 512m inblocks_reproduce lmdb
 
-build:
+docker:
 	docker build -t inblocks_reproduce .
 
 mdbx2:
@@ -26,7 +26,7 @@ db-tools: mdbx2
 	mkdir -p $(GOBIN)
 
 	@echo "Building bb-tools"
-	cd lmdb; make clean mdb_stat mdb_copy mdb_dump mdb_drop mdb_load; cp mdb_stat $(GOBIN); cp mdb_copy $(GOBIN); cp mdb_dump $(GOBIN); cp mdb_drop $(GOBIN); cp mdb_load $(GOBIN)
+	cd lmdb/libraries/liblmdb; make clean mdb_stat mdb_copy mdb_dump mdb_drop mdb_load; cp mdb_stat $(GOBIN); cp mdb_copy $(GOBIN); cp mdb_dump $(GOBIN); cp mdb_drop $(GOBIN); cp mdb_load $(GOBIN); cd ../../../
 
 	cd mdbx-go/dist/ && make tools
 	cp mdbx-go/dist/mdbx_chk $(GOBIN)
