@@ -10,4 +10,4 @@ WORKDIR /app
 
 RUN make mdbx2
 
-ENTRYPOINT go run .
+RUN go build .

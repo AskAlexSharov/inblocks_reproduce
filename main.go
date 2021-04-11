@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	keysPerBatch = 10_000
+	keysPerBatch = 1_000
 )
 
 func main() {
