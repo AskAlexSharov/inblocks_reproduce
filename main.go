@@ -18,6 +18,7 @@ import (
 
 const (
 	keysPerBatch = 1_000
+	readFrom     = 11_800_000
 )
 
 func main() {
@@ -136,7 +137,7 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	txn, err := env.BeginTxn(nil, 0)
+	txn, err := env.BeginTxn(nil, mdbx.Readonly)
 	if err != nil {
 		panic(err)
 	}
@@ -149,17 +150,12 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 		panic(err)
 	}
 	defer c.Close()
-	from := make([]byte, 8)
-	binary.BigEndian.PutUint64(from, 11_500_000)
-	for _, v, err := c.Get(from, nil, mdbx.SetRange); ; _, v, err = c.Get(nil, nil, mdbx.Next) {
-		if err != nil {
-			if mdbx.IsNotFound(err) {
-				break
-			}
-			panic(err)
-		}
-		for i := 0; i < len(v); i++ {
-			_ = v[i]
+	seek := make([]byte, 8)
+	for num := uint64(readFrom); num < 12_200_000; num++ {
+		binary.BigEndian.PutUint64(seek, num)
+		c.Get(seek, nil, mdbx.SetRange)
+		if num%1_000 == 0 {
+			fmt.Printf("%d\n", num)
 		}
 	}
 }
@@ -168,7 +164,7 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	txn, err := env.BeginTxn(nil, 0)
+	txn, err := env.BeginTxn(nil, lmdb.Readonly)
 	if err != nil {
 		panic(err)
 	}
@@ -181,17 +177,12 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 		panic(err)
 	}
 	defer c.Close()
-	from := make([]byte, 8)
-	binary.BigEndian.PutUint64(from, 11_500_000)
-	for _, v, err := c.Get(from, nil, lmdb.First); ; _, v, err = c.Get(nil, nil, lmdb.Next) {
-		if err != nil {
-			if lmdb.IsNotFound(err) {
-				break
-			}
-			panic(err)
-		}
-		for i := 0; i < len(v); i++ {
-			_ = v[i]
+	seek := make([]byte, 8)
+	for num := uint64(readFrom); num < 12_200_000; num++ {
+		binary.BigEndian.PutUint64(seek, num)
+		c.Get(seek, nil, lmdb.SetRange)
+		if num%1_000 == 0 {
+			fmt.Printf("%d\n", num)
 		}
 	}
 }
