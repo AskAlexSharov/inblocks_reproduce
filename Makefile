@@ -1,6 +1,9 @@
 GOBIN = $(CURDIR)/build/bin
 GOBUILD = go build -trimpath -tags "mdbx"
 
+docker_run:
+	docker run -it --rm -m 512m --memory-swap 0 --memory-swappiness 0 -v $(CURDIR):/app inblocks_reproduce bash
+
 docker: mdbx2 db-tools
 	mkdir -p data_lmdb
 	mkdir -p data_mdbx
@@ -16,7 +19,7 @@ mdbx2:
 	&& echo '#define MDBX_ENABLE_MADVISE 0' >> config.h \
 	&& echo '#define MDBX_TXN_CHECKOWNER 1' >> config.h \
 	&& echo '#define MDBX_ENV_CHECKPID 1' >> config.h \
-	&& echo '#define MDBX_DISABLE_PAGECHECKS 0' >> config.h \
+	&& echo '#define MDBX_DISABLE_PAGECHECKS 1' >> config.h \
 	&& CFLAGS_EXTRA="-Wno-deprecated-declarations" make mdbx-static.o
 
 db-tools: mdbx2

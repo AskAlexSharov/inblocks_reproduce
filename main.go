@@ -19,20 +19,20 @@ import (
 
 const (
 	keysPerBatch = 1_000
-	readFrom     = 10_000_000
-	readTo       = 11_000_000
+	readFrom     = 11_900_000
+	readTo       = 12_200_000
 )
 
 func main() {
-	f, err := os.Create("cpu.out")
-	if err != nil {
-		log.Fatal(err)
-	}
-	pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile()
+	//f, err := os.Create("cpu.out")
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
+	//pprof.StartCPUProfile(f)
+	//defer pprof.StopCPUProfile()
 
 	defer func() {
-		f, err := os.Create("cpu.out")
+		f, err := os.Create("heap.out")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -131,7 +131,18 @@ func openMdbx() (*mdbx.Env, mdbx.DBI) {
 	var dbi mdbx.DBI
 	if err := env.Update(func(txn *mdbx.Txn) error {
 		txn.RawRead = true
-		dbi, err = txn.OpenDBI("txSenders2", mdbx.Create, nil, nil)
+		dbi, err = txn.OpenDBI("txSenders2", 0, nil, nil)
+		return err
+	}); err != nil {
+		panic(err)
+	}
+	if err := env.Update(func(txn *mdbx.Txn) error {
+		txn.RawRead = true
+		s, err := txn.StatDBI(dbi)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("dbi entires: %d\n", s.Entries)
 		return err
 	}); err != nil {
 		panic(err)
@@ -139,16 +150,39 @@ func openMdbx() (*mdbx.Env, mdbx.DBI) {
 	return env, dbi
 }
 
-func writeMdbx(env *mdbx.Env, dbi mdbx.DBI) {
-	log.Printf("=== insert started")
-	for i := 0; i < 100; i++ {
-		fileInfo, err := os.Stat("./data_mdbx/mdbx.dat")
+func openLmdb() (*lmdb.Env, lmdb.DBI) {
+	env, err := lmdb.NewEnv()
+	if err != nil {
+		panic(err)
+	}
+
+	if err = env.SetMaxDBs(100); err != nil {
+		panic(err)
+	}
+	if err = env.SetMapSize(int64(1 * datasize.TB)); err != nil {
+		panic(err)
+	}
+	if err = os.MkdirAll("./data_lmdb", 0744); err != nil {
+		panic(err)
+	}
+	err = env.Open("./data_lmdb", mdbx.NoReadahead, 0644)
+	if err != nil {
+		panic(err)
+	}
+	var dbi lmdb.DBI
+	if err := env.Update(func(txn *lmdb.Txn) error {
+		txn.RawRead = true
+		dbi, err = txn.OpenDBI("txSenders2", 0)
+		s, err := txn.Stat(dbi)
 		if err != nil {
 			panic(err)
 		}
-		log.Printf("=== insert progress: %d%%, fileSize: %dGb", i, fileInfo.Size()/1024/1024/1024)
-		insertBatchMdbx(env, dbi, createBatch(uint8(i)))
+		fmt.Printf("dbi entires: %d\n", s.Entries)
+		return err
+	}); err != nil {
+		panic(err)
 	}
+	return env, dbi
 }
 
 func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
@@ -171,7 +205,10 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 	seek := make([]byte, 8)
 	for num := uint64(readFrom); num < readTo; num++ {
 		binary.BigEndian.PutUint64(seek, num)
-		c.Get(seek, nil, mdbx.SetRange)
+		_, _, err = c.Get(seek, nil, mdbx.SetRange)
+		if err != nil {
+			panic(err)
+		}
 		if num%10_000 == 0 {
 			fmt.Printf("%d\n", num)
 		}
@@ -198,55 +235,28 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 	seek := make([]byte, 8)
 	for num := uint64(readFrom); num < readTo; num++ {
 		binary.BigEndian.PutUint64(seek, num)
-		c.Get(seek, nil, lmdb.SetRange)
-		if num%1_000 == 0 {
+		_, _, err = c.Get(seek, nil, lmdb.SetRange)
+		if err != nil {
+			panic(err)
+		}
+		if num%10_000 == 0 {
 			fmt.Printf("%d\n", num)
 		}
 	}
 }
 
-func createBatch(batchId uint8) []*Pair {
-	val := make([]byte, 32*1024)
-	key := make([]byte, 20)
-	key[0] = batchId
-	var pairs []*Pair
-	for j := 0; j < keysPerBatch; j++ {
-		key = next(key)
-		pairs = append(pairs, &Pair{k: copyBytes(key), v: copyBytes(val)})
+func writeMdbx(env *mdbx.Env, dbi mdbx.DBI) {
+	log.Printf("=== insert started")
+	for i := 0; i < 100; i++ {
+		fileInfo, err := os.Stat("./data_mdbx/mdbx.dat")
+		if err != nil {
+			panic(err)
+		}
+		log.Printf("=== insert progress: %d%%, fileSize: %dGb", i, fileInfo.Size()/1024/1024/1024)
+		insertBatchMdbx(env, dbi, createBatch(uint8(i)))
 	}
-	return pairs
 }
 
-func openLmdb() (*lmdb.Env, lmdb.DBI) {
-	env, err := lmdb.NewEnv()
-	if err != nil {
-		panic(err)
-	}
-
-	if err = env.SetMaxDBs(100); err != nil {
-		panic(err)
-	}
-	if err = env.SetMapSize(int64(1 * datasize.TB)); err != nil {
-		panic(err)
-	}
-	if err = os.MkdirAll("./data_lmdb", 0744); err != nil {
-		panic(err)
-	}
-	err = env.Open("./data_lmdb", mdbx.NoReadahead, 0644)
-	if err != nil {
-		panic(err)
-	}
-	var dbi lmdb.DBI
-	if err := env.Update(func(txn *lmdb.Txn) error {
-		txn.RawRead = true
-		dbi, err = txn.OpenDBI("txSenders2", lmdb.Create)
-		return err
-	}); err != nil {
-		panic(err)
-	}
-
-	return env, dbi
-}
 func writeLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 	log.Printf("=== in sert started")
 	for i := 0; i < 100; i++ {
@@ -388,4 +398,16 @@ func copyBytes(b []byte) (copiedBytes []byte) {
 	copy(copiedBytes, b)
 
 	return
+}
+
+func createBatch(batchId uint8) []*Pair {
+	val := make([]byte, 32*1024)
+	key := make([]byte, 20)
+	key[0] = batchId
+	var pairs []*Pair
+	for j := 0; j < keysPerBatch; j++ {
+		key = next(key)
+		pairs = append(pairs, &Pair{k: copyBytes(key), v: copyBytes(val)})
+	}
+	return pairs
 }
