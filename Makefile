@@ -1,15 +1,11 @@
 GOBIN = $(CURDIR)/build/bin
 GOBUILD = go build -trimpath -tags "mdbx"
 
-run_mdbx:
-	docker run -it --rm -m 512m inblocks_reproduce
-
-run_lmdb:
-	docker run -it --rm -m 512m inblocks_reproduce lmdb
-
-docker:
-	mkdir data_lmdb data_mdbx
+docker: mdbx2 db-tools
+	mkdir -p data_lmdb
+	mkdir -p data_mdbx
 	docker build -t inblocks_reproduce .
+	docker run -it --rm -m 512m -v $(CURDIR):/app inblocks_reproduce bash
 
 mdbx2:
 	@echo "Building mdbx"

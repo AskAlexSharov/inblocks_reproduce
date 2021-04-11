@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"os"
@@ -33,7 +34,7 @@ use as:
 ./inblocks_reproduce mdbx write
 ./inblocks_reproduce mdbx read
 ./inblocks_reproduce lmdb write
-./inblocks_reproduce lmdb reads
+./inblocks_reproduce lmdb read
 `)
 		return
 	}
@@ -111,7 +112,7 @@ func openMdbx() (*mdbx.Env, mdbx.DBI) {
 	var dbi mdbx.DBI
 	if err := env.Update(func(txn *mdbx.Txn) error {
 		txn.RawRead = true
-		dbi, err = txn.OpenDBI("alex", mdbx.Create, nil, nil)
+		dbi, err = txn.OpenDBI("txSenders2", mdbx.Create, nil, nil)
 		return err
 	}); err != nil {
 		panic(err)
@@ -148,7 +149,9 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 		panic(err)
 	}
 	defer c.Close()
-	for _, v, err := c.Get(nil, nil, mdbx.First); ; _, v, err = c.Get(nil, nil, mdbx.Next) {
+	from := make([]byte, 8)
+	binary.BigEndian.PutUint64(from, 11_500_000)
+	for _, v, err := c.Get(from, nil, mdbx.SetRange); ; _, v, err = c.Get(nil, nil, mdbx.Next) {
 		if err != nil {
 			if mdbx.IsNotFound(err) {
 				break
@@ -178,8 +181,9 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 		panic(err)
 	}
 	defer c.Close()
-
-	for _, v, err := c.Get(nil, nil, lmdb.First); ; _, v, err = c.Get(nil, nil, lmdb.Next) {
+	from := make([]byte, 8)
+	binary.BigEndian.PutUint64(from, 11_500_000)
+	for _, v, err := c.Get(from, nil, lmdb.First); ; _, v, err = c.Get(nil, nil, lmdb.Next) {
 		if err != nil {
 			if lmdb.IsNotFound(err) {
 				break
@@ -226,7 +230,7 @@ func openLmdb() (*lmdb.Env, lmdb.DBI) {
 	var dbi lmdb.DBI
 	if err := env.Update(func(txn *lmdb.Txn) error {
 		txn.RawRead = true
-		dbi, err = txn.OpenDBI("alex", lmdb.Create)
+		dbi, err = txn.OpenDBI("txSenders2", lmdb.Create)
 		return err
 	}); err != nil {
 		panic(err)
