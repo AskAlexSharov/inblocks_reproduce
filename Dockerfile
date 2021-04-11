@@ -8,6 +8,6 @@ ADD . /app
 
 WORKDIR /app
 
-RUN make mdbx2
+RUN make mdbx2 db-tools
 
 RUN go build .
