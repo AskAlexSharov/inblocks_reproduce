@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -115,33 +117,22 @@ func openMdbx() (*mdbx.Env, mdbx.DBI) {
 	// 1/8 is good for transactions with a lot of modifications - to reduce invalidation size.
 	// But TG app now using Batch and etl.Collectors to avoid writing to DB frequently changing data.
 	// It means most of our writes are: APPEND or "single UPSERT per key during transaction"
-	if err = env.SetOption(mdbx.OptSpillMinDenominator, 8); err != nil {
-		panic(err)
-	}
-	if err = env.SetOption(mdbx.OptTxnDpInitial, 4*1024); err != nil {
-		panic(err)
-	}
-	if err = env.SetOption(mdbx.OptDpReverseLimit, 4*1024); err != nil {
-		panic(err)
-	}
-	if err = env.SetOption(mdbx.OptTxnDpLimit, 128*1024); err != nil {
-		panic(err)
-	}
+	//if err = env.SetOption(mdbx.OptSpillMinDenominator, 8); err != nil {
+	//	panic(err)
+	//}
+	//if err = env.SetOption(mdbx.OptTxnDpInitial, 4*1024); err != nil {
+	//	panic(err)
+	//}
+	//if err = env.SetOption(mdbx.OptDpReverseLimit, 4*1024); err != nil {
+	//	panic(err)
+	//}
+	//if err = env.SetOption(mdbx.OptTxnDpLimit, 128*1024); err != nil {
+	//	panic(err)
+	//}
 	var dbi mdbx.DBI
 	if err := env.Update(func(txn *mdbx.Txn) error {
 		txn.RawRead = true
 		dbi, err = txn.OpenDBI("PLAIN-CST2", 0, nil, nil)
-		return err
-	}); err != nil {
-		panic(err)
-	}
-	if err := env.Update(func(txn *mdbx.Txn) error {
-		txn.RawRead = true
-		s, err := txn.StatDBI(dbi)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("dbi entires: %d\n", s.Entries)
 		return err
 	}); err != nil {
 		panic(err)
@@ -172,11 +163,6 @@ func openLmdb() (*lmdb.Env, lmdb.DBI) {
 	if err := env.Update(func(txn *lmdb.Txn) error {
 		txn.RawRead = true
 		dbi, err = txn.OpenDBI("PLAIN-CST2", 0)
-		s, err := txn.Stat(dbi)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("dbi entires: %d\n", s.Entries)
 		return err
 	}); err != nil {
 		panic(err)
@@ -201,19 +187,31 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 		panic(err)
 	}
 	defer c.Close()
-	i := 0
-	for _, _, err = c.Get(nil, nil, mdbx.First); ; _, _, err = c.Get(nil, nil, mdbx.Next) {
-		if err != nil {
-			if mdbx.IsNotFound(err) {
-				break
-			}
-			panic(err)
-		}
-		i++
-		if i > 100_000 {
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		if !scanner.Scan() {
 			break
 		}
+		parts := strings.Split(string(scanner.Bytes()), " ")
+		if parts[0] == "set" {
+			c.Get([]byte(parts[1]), nil, mdbx.Set)
+		} else if parts[0] == "getBothRange" {
+			c.Get([]byte(parts[1]), []byte(parts[2]), mdbx.GetBothRange)
+		} else {
+			continue
+		}
 	}
+
+	//for _, _, err = c.Get(nil, nil, mdbx.First); ; _, _, err = c.Get(nil, nil, mdbx.Next) {
+	//	if err != nil {
+	//		if mdbx.IsNotFound(err) {
+	//			break
+	//		}
+	//		panic(err)
+	//	}
+	//	i++
+	//}
+	//fmt.Printf("entries: %d\n",i)
 	//for i := 0; i < 10_000; i++ {
 	//	k, v, err := c.Get([]byte{uint8(rand.Intn(255)), uint8(rand.Intn(255))}, nil, mdbx.SetRange)
 	//	if err != nil {
@@ -240,19 +238,37 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 		panic(err)
 	}
 	defer c.Close()
-	i := 0
-	for _, _, err = c.Get(nil, nil, lmdb.First); ; _, _, err = c.Get(nil, nil, lmdb.Next) {
-		if err != nil {
-			if lmdb.IsNotFound(err) {
-				break
-			}
-			panic(err)
-		}
-		i++
-		if i > 100_000 {
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		if !scanner.Scan() {
 			break
 		}
+		parts := strings.Split(string(scanner.Bytes()), " ")
+		if parts[0] == "set" {
+			c.Get([]byte(parts[1]), nil, lmdb.Set)
+		} else if parts[0] == "getBothRange" {
+			if len(parts) <= 2 {
+				continue
+			}
+			c.Get([]byte(parts[1]), []byte(parts[2]), lmdb.GetBothRange)
+		} else {
+			continue
+		}
+
 	}
+
+	//for _, _, err = c.Get(nil, nil, lmdb.First); ; _, _, err = c.Get(nil, nil, lmdb.Next) {
+	//	if err != nil {
+	//		if lmdb.IsNotFound(err) {
+	//			break
+	//		}
+	//		panic(err)
+	//	}
+	//	i++
+	//}
+	//fmt.Printf("entries: %d\n",i)
+
 	//for i := 0; i < 10_000; i++ {
 	//	k, v, err := c.Get([]byte{uint8(rand.Intn(255)), uint8(rand.Intn(255))}, nil, lmdb.SetRange)
 	//	if err != nil {
