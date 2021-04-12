@@ -196,6 +196,10 @@ func readMdbx(env *mdbx.Env, dbi mdbx.DBI) {
 		if parts[0] == "set" {
 			c.Get([]byte(parts[1]), nil, mdbx.Set)
 		} else if parts[0] == "getBothRange" {
+			if len(parts) <= 2 {
+				continue
+			}
+			parts[1] = parts[1][:len(parts[1])-1] // remove comma at the end
 			c.Get([]byte(parts[1]), []byte(parts[2]), mdbx.GetBothRange)
 		} else {
 			continue
@@ -251,6 +255,7 @@ func readLmdb(env *lmdb.Env, dbi lmdb.DBI) {
 			if len(parts) <= 2 {
 				continue
 			}
+			parts[1] = parts[1][:len(parts[1])-1] // remove comma at the end
 			c.Get([]byte(parts[1]), []byte(parts[2]), lmdb.GetBothRange)
 		} else {
 			continue
