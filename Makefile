@@ -16,7 +16,7 @@ mdbx2:
 	&& make clean && make config.h \
 	&& echo '#define MDBX_DEBUG 0' >> config.h \
 	&& echo '#define MDBX_FORCE_ASSERTIONS 0' >> config.h \
-	&& echo '#define MDBX_ENABLE_MADVISE 0' >> config.h \
+	&& echo '#define MDBX_ENABLE_MADVISE 1' >> config.h \
 	&& echo '#define MDBX_TXN_CHECKOWNER 1' >> config.h \
 	&& echo '#define MDBX_ENV_CHECKPID 1' >> config.h \
 	&& echo '#define MDBX_DISABLE_PAGECHECKS 1' >> config.h \
