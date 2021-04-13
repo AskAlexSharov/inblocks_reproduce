@@ -11,7 +11,7 @@ docker: mdbx2 db-tools
 	docker run -it --rm -m 512m -v $(CURDIR):/app inblocks_reproduce bash
 
 mdbx2:
-	@echo "Building mdbx"
+	@echo "Building mdbx"/handler_eth_test.go:250
 	@cd mdbx-go/dist/ \
 	&& make clean && make config.h \
 	&& echo '#define MDBX_DEBUG 0' >> config.h \
